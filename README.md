@@ -1,6 +1,6 @@
 
-## 🚀 Live app
-https://roman-black-scholes-pricer.streamlit.app/
+## 🔴 Live app
+👉 https://roman-black-scholes-pricer.streamlit.app/
 
 ![Black-Scholes App](assets/app_screenshot.png)
 
