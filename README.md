@@ -1,4 +1,7 @@
 
+## 🚀 Live app
+https://roman-black-scholes-pricer.streamlit.app/
+
 # Black–Scholes Option Pricing Calculator
 
 A Python + Streamlit web app that prices European call and put options using the Black–Scholes model. Includes Greeks, implied volatility (bisection solver), and a put–call parity check.
