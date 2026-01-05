@@ -31,6 +31,35 @@ def bs_price(S: float, K: float, T: float, r: float, q: float, sigma: float):
     return call, put, d1, d2
 
 
+def bs_price_vectorized(S, K: float, T: float, r: float, q: float, sigma):
+    """
+    Vectorized Black–Scholes prices for heatmaps.
+    S and sigma can be numpy arrays.
+    Returns: call_grid, put_grid
+    """
+    S = np.asarray(S, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+
+    eps = 1e-12
+    if K <= 0:
+        raise ValueError("K must be positive.")
+    if T <= 0:
+        raise ValueError("T must be positive (in years).")
+
+    sigma = np.maximum(sigma, eps)
+    sqrtT = math.sqrt(T)
+
+    d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * sqrtT)
+    d2 = d1 - sigma * sqrtT
+
+    disc_q = math.exp(-q * T)
+    disc_r = math.exp(-r * T)
+
+    call = S * disc_q * norm.cdf(d1) - K * disc_r * norm.cdf(d2)
+    put = K * disc_r * norm.cdf(-d2) - S * disc_q * norm.cdf(-d1)
+    return call, put
+
+
 def bs_greeks(S: float, K: float, T: float, r: float, q: float, sigma: float):
     """
     Returns Greeks for European options with dividend yield q:
@@ -108,7 +137,6 @@ def implied_vol_bisect(
         c, p, _, _ = bs_price(S, K, T, r, q, sig)
         return c if option_type == "call" else p
 
-    # Lower bound check against discounted intrinsic
     disc_q = math.exp(-q * T)
     disc_r = math.exp(-r * T)
     intrinsic = max(0.0, S * disc_q - K * disc_r) if option_type == "call" else max(0.0, K * disc_r - S * disc_q)
@@ -136,9 +164,42 @@ def implied_vol_bisect(
     return 0.5 * (lo + hi)
 
 
+def plot_heatmap(ax, Z, x_ticks, y_ticks, title, xlabel, ylabel, cmap=None, center_zero=False):
+    """
+    Matplotlib heatmap with values inside cells.
+    Z shape: (len(y_ticks), len(x_ticks))
+
+    center_zero=True:
+      - uses symmetric vmin/vmax around 0 (good for P&L)
+    """
+    if center_zero:
+        vmax = float(np.max(np.abs(Z))) if np.size(Z) else 1.0
+        vmax = max(vmax, 1e-12)
+        vmin = -vmax
+        im = ax.imshow(Z, aspect="auto", origin="lower", vmin=vmin, vmax=vmax, cmap=cmap)
+    else:
+        im = ax.imshow(Z, aspect="auto", origin="lower", cmap=cmap)
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    ax.set_xticks(np.arange(len(x_ticks)))
+    ax.set_yticks(np.arange(len(y_ticks)))
+
+    ax.set_xticklabels([f"{v:.2f}" for v in x_ticks], rotation=45, ha="right")
+    ax.set_yticklabels([f"{v:.2f}" for v in y_ticks])
+
+    for i in range(Z.shape[0]):
+        for j in range(Z.shape[1]):
+            ax.text(j, i, f"{Z[i, j]:.2f}", ha="center", va="center", fontsize=8)
+
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+
 # ------------------- Streamlit UI -------------------
 
-st.set_page_config(page_title="Black–Scholes Option Pricing Calculator", layout="centered")
+st.set_page_config(page_title="Black–Scholes Option Pricing Calculator", layout="wide")
 
 st.title("Black–Scholes Option Pricing Calculator")
 st.caption("European call and put options using Black–Scholes. Includes Greeks, implied volatility, and sensitivity plots.")
@@ -174,7 +235,6 @@ with col2:
     sigma_pct = st.number_input("Volatility (%)", min_value=0.0001, value=10.0, step=0.25, format="%.4f")
     q_pct = st.number_input("Dividend yield (%)", min_value=0.0, value=0.0, step=0.25, format="%.4f")
 
-# Convert to decimals internally
 r = r_pct / 100.0
 sigma = sigma_pct / 100.0
 q = q_pct / 100.0
@@ -189,6 +249,79 @@ try:
     r1.metric("Call price", f"{call:.4f}")
     r2.metric("Put price", f"{put:.4f}")
 
+    # ------------------- Heatmap controls (sidebar) -------------------
+    st.sidebar.subheader("Heatmap parameters")
+    heatmap_view = st.sidebar.selectbox("Heatmap view", ["Option price", "P&L (vs purchase price)"], index=0)
+
+    spot_min = st.sidebar.number_input("Min spot price", value=float(max(0.01, 0.7 * S)))
+    spot_max = st.sidebar.number_input("Max spot price", value=float(1.3 * S))
+    vol_min_pct = st.sidebar.number_input("Min volatility (%)", value=float(max(0.01, 0.7 * sigma_pct)), format="%.4f")
+    vol_max_pct = st.sidebar.number_input("Max volatility (%)", value=float(1.3 * sigma_pct), format="%.4f")
+    grid_n = st.sidebar.slider("Grid size", min_value=6, max_value=16, value=10)
+
+    call_paid = None
+    put_paid = None
+    if heatmap_view == "P&L (vs purchase price)":
+        call_paid = st.sidebar.number_input("Call purchase price", value=float(call), min_value=0.0, step=0.1)
+        put_paid = st.sidebar.number_input("Put purchase price", value=float(put), min_value=0.0, step=0.1)
+
+    if spot_max <= spot_min:
+        st.sidebar.error("Max spot must be greater than min spot.")
+    if vol_max_pct <= vol_min_pct:
+        st.sidebar.error("Max volatility must be greater than min volatility.")
+
+    is_pnl = heatmap_view == "P&L (vs purchase price)"
+    st.markdown("## Options Heatmap")
+    st.write(
+        "Choose **Option price** or switch to **P&L** (green = profit, red = loss) using the purchase price inputs in the sidebar."
+        if is_pnl
+        else "Prices across spot price and volatility while holding strike and other inputs fixed."
+    )
+
+    if (spot_max > spot_min) and (vol_max_pct > vol_min_pct):
+        S_vals = np.linspace(spot_min, spot_max, grid_n)
+        sig_vals = np.linspace(vol_min_pct / 100.0, vol_max_pct / 100.0, grid_n)
+        S_grid, sig_grid = np.meshgrid(S_vals, sig_vals)
+
+        call_grid, put_grid = bs_price_vectorized(S_grid, K, T, r, q, sig_grid)
+
+        # Convert to P&L if requested
+        if is_pnl:
+            call_grid = call_grid - float(call_paid)
+            put_grid = put_grid - float(put_paid)
+
+        cmap = "RdYlGn" if is_pnl else None
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        plot_heatmap(
+            ax1,
+            call_grid,
+            x_ticks=S_vals,
+            y_ticks=sig_vals * 100.0,
+            title="Call P&L Heatmap" if is_pnl else "Call Price Heatmap",
+            xlabel="Spot price (S)",
+            ylabel="Volatility (%)",
+            cmap=cmap,
+            center_zero=is_pnl,
+        )
+        plot_heatmap(
+            ax2,
+            put_grid,
+            x_ticks=S_vals,
+            y_ticks=sig_vals * 100.0,
+            title="Put P&L Heatmap" if is_pnl else "Put Price Heatmap",
+            xlabel="Spot price (S)",
+            ylabel="Volatility (%)",
+            cmap=cmap,
+            center_zero=is_pnl,
+        )
+
+        st.pyplot(fig)
+    else:
+        st.info("Adjust heatmap bounds in the sidebar to generate the heatmaps.")
+
+    # ------------------- Greeks -------------------
     with st.expander("Greeks", expanded=True):
         g1, g2, g3, g4 = st.columns(4)
         g1.metric("Call Delta", f"{greeks['delta_call']:.4f}")
@@ -275,14 +408,14 @@ try:
         x = T_grid
         xlabel = "Time to maturity (years)"
 
-    fig = plt.figure()
+    fig2 = plt.figure()
     plt.plot(x, call_vals, label="Call")
     plt.plot(x, put_vals, label="Put")
     plt.xlabel(xlabel)
     plt.ylabel("Option price")
     plt.legend()
     plt.grid(True, alpha=0.25)
-    st.pyplot(fig)
+    st.pyplot(fig2)
 
 except Exception as e:
     st.error(f"Input error: {e}")
