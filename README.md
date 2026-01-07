@@ -4,9 +4,15 @@
 ## 🔴 Live app
 👉 https://roman-black-scholes-pricer.streamlit.app/
 
-![Black-Scholes App](screenshots/app.png)
-=======
-An interactive Black-Scholes option pricing application built to demonstrate option pricing theory, risk sensitivities, and practical quantitative trading intuition.  
+# Black-Scholes Option Pricing Calculator
+
+🚀 **Live app**  
+https://roman-black-scholes-pricer.streamlit.app/
+
+![Black-Scholes Option Pricing Calculator](app_overview.png)
+
+An interactive Black–Scholes option pricing application built to demonstrate option pricing theory, risk sensitivities, and practical quantitative trading intuition.
+
 The app progresses from core pricing mechanics to sensitivity analysis and implied volatility extraction, reflecting how option models are used in practice.
 >>>>>>> 1fd342e9a2c351d4745d68c36bafe1fe4154e34f
 
