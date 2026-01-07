@@ -1,22 +1,13 @@
 # Black-Scholes Option Pricing Calculator
 
-<<<<<<< HEAD
 ## 🔴 Live app
 👉 https://roman-black-scholes-pricer.streamlit.app/
-
-# Black-Scholes Option Pricing Calculator
-
-🚀 **Live app**  
-https://roman-black-scholes-pricer.streamlit.app/
 
 ![Black-Scholes Option Pricing Calculator](app_overview.png)
 
 An interactive Black–Scholes option pricing application built to demonstrate option pricing theory, risk sensitivities, and practical quantitative trading intuition.
 
 The app progresses from core pricing mechanics to sensitivity analysis and implied volatility extraction, reflecting how option models are used in practice.
->>>>>>> 1fd342e9a2c351d4745d68c36bafe1fe4154e34f
-
-🔴 **Live app:** https://roman-black-scholes-pricer.streamlit.app
 
 ---
 
@@ -79,4 +70,4 @@ Greeks are displayed alongside prices to emphasize risk interpretation, not just
 git clone https://github.com/Aaron-cody/black-scholes-option-pricing.git
 cd black-scholes-option-pricing
 pip install -r requirements.txt
-streamlit run streamlit_app.py
+streamlit run app.py
