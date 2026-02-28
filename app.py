@@ -1,3 +1,4 @@
+
 import math
 import numpy as np
 import streamlit as st
@@ -164,7 +165,7 @@ def implied_vol_bisect(
     return 0.5 * (lo + hi)
 
 
-def plot_heatmap(ax, Z, x_ticks, y_ticks, title, xlabel, ylabel, cmap=None, center_zero=False):
+def plot_heatmap(ax, Z, x_ticks, y_ticks, title, xlabel, ylabel, cmap=None, center_zero=False, value_fmt="{:.2f}"):
     """
     Matplotlib heatmap with values inside cells.
     Z shape: (len(y_ticks), len(x_ticks))
@@ -192,7 +193,7 @@ def plot_heatmap(ax, Z, x_ticks, y_ticks, title, xlabel, ylabel, cmap=None, cent
 
     for i in range(Z.shape[0]):
         for j in range(Z.shape[1]):
-            ax.text(j, i, f"{Z[i, j]:.2f}", ha="center", va="center", fontsize=8)
+            ax.text(j, i, value_fmt.format(Z[i, j]), ha="center", va="center", fontsize=8)
 
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
@@ -251,7 +252,11 @@ try:
 
     # ------------------- Heatmap controls (sidebar) -------------------
     st.sidebar.subheader("Heatmap parameters")
-    heatmap_view = st.sidebar.selectbox("Heatmap view", ["Option price", "P&L (vs purchase price)"], index=0)
+    heatmap_view = st.sidebar.selectbox(
+        "Heatmap view",
+        ["Option price", "P&L (vs purchase price)", "Call Delta", "Put Delta", "ΔCall for +1€", "ΔPut for +1€"],
+        index=0,
+    )
 
     spot_min = st.sidebar.number_input("Min spot price", value=float(max(0.01, 0.7 * S)))
     spot_max = st.sidebar.number_input("Max spot price", value=float(1.3 * S))
@@ -283,14 +288,70 @@ try:
         sig_vals = np.linspace(vol_min_pct / 100.0, vol_max_pct / 100.0, grid_n)
         S_grid, sig_grid = np.meshgrid(S_vals, sig_vals)
 
+        # Base price grids (keep your original structure)
         call_grid, put_grid = bs_price_vectorized(S_grid, K, T, r, q, sig_grid)
 
-        # Convert to P&L if requested
-        if is_pnl:
+        # --- Added: Delta grids ---
+        sqrtT = math.sqrt(T)
+        eps = 1e-12
+        sig_safe = np.maximum(sig_grid, eps)
+        d1_grid = (np.log(S_grid / K) + (r - q + 0.5 * sig_safe**2) * T) / (sig_safe * sqrtT)
+        disc_q = math.exp(-q * T)
+        call_delta_grid = disc_q * norm.cdf(d1_grid)
+        put_delta_grid = disc_q * (norm.cdf(d1_grid) - 1.0)
+
+        # Switch what the heatmap shows (price / P&L / delta / +1€ move)
+        center_zero = False
+        cmap = None
+        value_fmt = "{:.2f}"
+
+        if heatmap_view == "P&L (vs purchase price)":
             call_grid = call_grid - float(call_paid)
             put_grid = put_grid - float(put_paid)
+            center_zero = True
+            cmap = "RdYlGn"
+            value_fmt = "{:.2f}"
 
-        cmap = "RdYlGn" if is_pnl else None
+        elif heatmap_view == "Call Delta":
+            call_grid = call_delta_grid
+            put_grid = put_delta_grid
+            value_fmt = "{:.4f}"
+
+        elif heatmap_view == "Put Delta":
+            call_grid = call_delta_grid
+            put_grid = put_delta_grid
+            value_fmt = "{:.4f}"
+
+        elif heatmap_view == "ΔCall for +1€":
+            call_plus, put_plus = bs_price_vectorized(S_grid + 1.0, K, T, r, q, sig_grid)
+            call_grid = call_plus - call_grid
+            put_grid = put_plus - put_grid
+            value_fmt = "{:.4f}"
+
+        elif heatmap_view == "ΔPut for +1€":
+            call_plus, put_plus = bs_price_vectorized(S_grid + 1.0, K, T, r, q, sig_grid)
+            call_grid = call_plus - call_grid
+            put_grid = put_plus - put_grid
+            value_fmt = "{:.4f}"
+
+        # Titles stay sensible
+        left_title = "Call Price Heatmap"
+        right_title = "Put Price Heatmap"
+        if heatmap_view == "P&L (vs purchase price)":
+            left_title = "Call P&L Heatmap"
+            right_title = "Put P&L Heatmap"
+        elif heatmap_view == "Call Delta":
+            left_title = "Call Delta Heatmap"
+            right_title = "Put Delta Heatmap"
+        elif heatmap_view == "Put Delta":
+            left_title = "Call Delta Heatmap"
+            right_title = "Put Delta Heatmap"
+        elif heatmap_view == "ΔCall for +1€":
+            left_title = "ΔCall for +1€ Heatmap"
+            right_title = "ΔPut for +1€ Heatmap"
+        elif heatmap_view == "ΔPut for +1€":
+            left_title = "ΔCall for +1€ Heatmap"
+            right_title = "ΔPut for +1€ Heatmap"
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
@@ -299,22 +360,24 @@ try:
             call_grid,
             x_ticks=S_vals,
             y_ticks=sig_vals * 100.0,
-            title="Call P&L Heatmap" if is_pnl else "Call Price Heatmap",
+            title=left_title,
             xlabel="Spot price (S)",
             ylabel="Volatility (%)",
             cmap=cmap,
-            center_zero=is_pnl,
+            center_zero=center_zero,
+            value_fmt=value_fmt,
         )
         plot_heatmap(
             ax2,
             put_grid,
             x_ticks=S_vals,
             y_ticks=sig_vals * 100.0,
-            title="Put P&L Heatmap" if is_pnl else "Put Price Heatmap",
+            title=right_title,
             xlabel="Spot price (S)",
             ylabel="Volatility (%)",
             cmap=cmap,
-            center_zero=is_pnl,
+            center_zero=center_zero,
+            value_fmt=value_fmt,
         )
 
         st.pyplot(fig)
